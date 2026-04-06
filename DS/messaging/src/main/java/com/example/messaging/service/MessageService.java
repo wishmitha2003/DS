@@ -18,17 +18,20 @@ public class MessageService {
     private final ReplicationService replicationService;
     private final LogicalClockService logicalClockService;
     private final TimeSyncService timeSyncService;
+    private final ConsensusService consensusService;
 
     public MessageService(NodeClusterService nodeClusterService,
                           DeduplicationService deduplicationService,
                           ReplicationService replicationService,
                           LogicalClockService logicalClockService,
-                          TimeSyncService timeSyncService) {
+                          TimeSyncService timeSyncService,
+                          ConsensusService consensusService) {
         this.nodeClusterService = nodeClusterService;
         this.deduplicationService = deduplicationService;
         this.replicationService = replicationService;
         this.logicalClockService = logicalClockService;
         this.timeSyncService = timeSyncService;
+        this.consensusService = consensusService;
     }
 
     public Message sendMessage(SendMessageRequest request) {
@@ -37,8 +40,8 @@ public class MessageService {
                     .orElseThrow(() -> new IllegalStateException("Duplicate detected but original message not found"));
         }
 
-        String writableNode = nodeClusterService.getWritableNode();
-        long clock = logicalClockService.tick();
+        String leaderNode = consensusService.getLeader();
+        long logicalClock = logicalClockService.tick();
 
         Message message = new Message(
                 UUID.randomUUID().toString(),
@@ -46,25 +49,22 @@ public class MessageService {
                 request.getFromUser(),
                 request.getToUser(),
                 request.getContent(),
-                timeSyncService.correctedNow(writableNode),
-                clock,
-                writableNode
+                timeSyncService.correctedNow(leaderNode),
+                logicalClock,
+                leaderNode
         );
 
-        nodeClusterService.saveToNode(writableNode, message);
-        replicationService.replicateToFollowers(message, writableNode);
+        nodeClusterService.saveToNode(leaderNode, message);
+        replicationService.replicateToFollowers(message, leaderNode);
         deduplicationService.markProcessed(request.getClientMessageId());
 
         return message;
     }
 
     public List<Message> getInbox(String userId) {
-        String primary = nodeClusterService.getPrimaryNode();
-        if (primary == null) {
-            throw new IllegalStateException("No active primary node");
-        }
+        String leader = consensusService.getLeader();
 
-        return nodeClusterService.readNodeMessages(primary).stream()
+        return nodeClusterService.readNodeMessages(leader).stream()
                 .filter(m -> userId.equalsIgnoreCase(m.getToUser()))
                 .sorted(Comparator.comparingLong(Message::getLogicalClock)
                         .thenComparing(Message::getCreatedAt))
@@ -72,24 +72,18 @@ public class MessageService {
     }
 
     public List<Message> getAllMessages() {
-        String primary = nodeClusterService.getPrimaryNode();
-        if (primary == null) {
-            throw new IllegalStateException("No active primary node");
-        }
+        String leader = consensusService.getLeader();
 
-        return nodeClusterService.readNodeMessages(primary).stream()
+        return nodeClusterService.readNodeMessages(leader).stream()
                 .sorted(Comparator.comparingLong(Message::getLogicalClock)
                         .thenComparing(Message::getCreatedAt))
                 .collect(Collectors.toList());
     }
 
     private Optional<Message> findByClientMessageId(String clientMessageId) {
-        String primary = nodeClusterService.getPrimaryNode();
-        if (primary == null) {
-            return Optional.empty();
-        }
+        String leader = consensusService.getLeader();
 
-        return nodeClusterService.readNodeMessages(primary).stream()
+        return nodeClusterService.readNodeMessages(leader).stream()
                 .filter(m -> clientMessageId != null && clientMessageId.equals(m.getClientMessageId()))
                 .findFirst();
     }
