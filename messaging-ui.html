@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Messaging System | Control Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #09090b;
+            --bg-glass: rgba(24, 24, 27, 0.65);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --accent: #2dd4bf;
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(45, 212, 191, 0.15), transparent 25%);
+        }
+
+        .glass-panel {
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Header */
+        header {
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-glass);
+            background: rgba(9, 9, 11, 0.8);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .user-auth {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Layout */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 320px 1fr 350px;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            flex: 1;
+            height: calc(100vh - 70px);
+        }
+
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-glass);
+            font-weight: 600;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-content {
+            padding: 1rem;
+            overflow-y: auto;
+            height: calc(100% - 60px);
+        }
+
+        /* Scroller */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* Cluster Status Panel */
+        .node-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .node-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .node-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .node-id {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-up { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .status-down { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        
+        .role-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            margin-left: 0.5rem;
+        }
+
+        .role-leader { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.4); }
+
+        .node-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .btn-fail { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .btn-fail:hover { background: var(--danger); color: white; }
+        
+        .btn-recover { background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .btn-recover:hover { background: var(--success); color: white; }
+
+        /* Messaging Panel */
+        .messaging-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+            padding-right: 0.5rem;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+        }
+
+        .msg-received { align-self: flex-start; }
+        .msg-sent { align-self: flex-end; }
+
+        .msg-bubble {
+            padding: 0.75rem 1rem;
+            border-radius: 16px;
+            position: relative;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            word-wrap: break-word;
+        }
+
+        .msg-received .msg-bubble {
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg-sent .msg-bubble {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: rgba(139, 92, 246, 0.4);
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg-meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .msg-vector {
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .message-form {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid var(--border-glass);
+        }
+        
+        .message-inputs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-inputs input { flex: 1; }
+        
+        .content-input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .content-input-group input { flex: 1; }
+
+        /* System Logs / Consensus */
+        .log-container {
+            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .log-entry {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem;
+            border-radius: 6px;
+            border-left: 2px solid var(--primary);
+        }
+
+        .log-time { color: var(--text-muted); margin-right: 0.5rem; }
+        .log-content { color: var(--text-main); }
+        .log-accent { color: var(--accent); }
+
+        .hidden { display: none !important; }
+        
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-top: 0.25rem;
+        }
+        
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">⚡ DistributedMsg</div>
+        <div class="user-auth">
+            <span id="currentUserDisplay" style="color: var(--text-muted);">Not Connected</span>
+            <input type="text" id="usernameInput" placeholder="Enter Username..." />
+            <button id="connectBtn">Connect</button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <!-- Left Panel: Cluster Status -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <span>Cluster Topology</span>
+                <span class="status-badge status-up" id="networkStatus">Online</span>
+            </div>
+            <div class="panel-content">
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-label">Term</div>
+                        <div class="stat-value" id="termStat">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Leader</div>
+                        <div class="stat-value" style="font-size: 1.1rem; line-height: 1.5rem;" id="leaderStat">-</div>
+                    </div>
+                </div>
+                <div class="node-list" id="nodeList">
+                    <div style="text-align: center; color: var(--text-muted); padding: 2rem 0;">Connecting to cluster...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel: Messaging -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <span>Real-time Messaging</span>
+            </div>
+            <div class="panel-content messaging-container">
+                <div class="chat-box" id="chatBox">
+                    <div style="text-align: center; color: var(--text-muted); margin-top: auto; margin-bottom: auto;">
+                        Please connect to view messages.
+                    </div>
+                </div>
+                
+                <div class="message-form">
+                    <div class="message-inputs">
+                        <input type="text" id="recipientInput" placeholder="Recipient..." disabled />
+                    </div>
+                    <div class="content-input-group">
+                        <input type="text" id="messageInput" placeholder="Type a message..." disabled autocomplete="off" />
+                        <button id="sendBtn" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Consensus Ledger -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <span>System Ledger & Logs</span>
+                <button class="btn-sm btn-recover" onclick="triggerElection()">Force Election</button>
+            </div>
+            <div class="panel-content">
+                <div class="log-container" id="systemLogs">
+                    <div class="log-entry">
+                        <span class="log-time">[System]</span>
+                        <span class="log-content">Initializing UI Dashboard...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8082/api';
+        let currentUser = null;
+        let pollingInterval = null;
+        let lastReportedNodesStr = "";
+
+        const usernameInput = document.getElementById('usernameInput');
+        const connectBtn = document.getElementById('connectBtn');
+        const currentUserDisplay = document.getElementById('currentUserDisplay');
+        const recipientInput = document.getElementById('recipientInput');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatBox = document.getElementById('chatBox');
+        const nodeList = document.getElementById('nodeList');
+        const termStat = document.getElementById('termStat');
+        const leaderStat = document.getElementById('leaderStat');
+        const systemLogs = document.getElementById('systemLogs');
+
+        function addLog(msg, type = "info") {
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            let formattedMsg = msg;
+            if(type === "error") {
+                formattedMsg = `<span style="color:var(--danger)">${msg}</span>`;
+            } else if(type === "success") {
+                formattedMsg = `<span style="color:var(--success)">${msg}</span>`;
+            } else if(type === "consensus") {
+                formattedMsg = `<span class="log-accent">${msg}</span>`;
+            } else if(type === "warning") {
+                formattedMsg = `<span style="color:var(--warning)">${msg}</span>`;
+            }
+            logEntry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-content">${formattedMsg}</span>`;
+            systemLogs.prepend(logEntry);
+            if(systemLogs.children.length > 50) {
+                systemLogs.removeChild(systemLogs.lastChild);
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            const user = usernameInput.value.trim();
+            if(user) {
+                currentUser = user;
+                currentUserDisplay.innerHTML = `Connected as <b style="color:var(--primary)">${currentUser}</b>`;
+                usernameInput.style.display = 'none';
+                connectBtn.style.display = 'none';
+                
+                recipientInput.disabled = false;
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                chatBox.innerHTML = '';
+                addLog(`User ${currentUser} connected to dashboard.`, "success");
+                
+                startPolling();
+            }
+        });
+
+        async function sendMessage() {
+            if(!currentUser) return;
+            const toUser = recipientInput.value.trim();
+            const content = messageInput.value.trim();
+            
+            if(!toUser || !content) return;
+            
+            const payload = {
+                clientMessageId: `msg-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                fromUser: currentUser,
+                toUser: toUser,
+                content: content
+            };
+            
+            messageInput.value = ''; 
+            
+            try {
+                const res = await fetch(`${API_BASE}/messages/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if(res.ok) {
+                    addLog(`Message sent to ${toUser}.`, "success");
+                    fetchMessages();
+                } else {
+                    addLog(`Failed to send message: ${res.statusText}`, "error");
+                }
+            } catch(e) {
+                addLog(`Error sending message: ${e.message}`, "error");
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') sendMessage();
+        });
+
+        function startPolling() {
+            if(pollingInterval) clearInterval(pollingInterval);
+            fetchClusterStatus();
+            fetchMessages();
+            
+            pollingInterval = setInterval(() => {
+                fetchClusterStatus();
+                fetchMessages();
+            }, 3000);
+        }
+
+        async function fetchClusterStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/cluster/status`);
+                if(res.ok) {
+                    const data = await res.json();
+                    renderClusterStatus(data);
+                }
+            } catch(e) {
+                document.getElementById('networkStatus').textContent = 'Offline';
+                document.getElementById('networkStatus').className = 'status-badge status-down';
+            }
+        }
+
+        async function fetchMessages() {
+            if(!currentUser) return;
+            try {
+                const allRes = await fetch(`${API_BASE}/messages/all`);
+                if(allRes.ok) {
+                    const allMessages = await allRes.json();
+                    const relevantMessages = allMessages.filter(m => m.fromUser === currentUser || m.toUser === currentUser);
+                    
+                    relevantMessages.sort((a,b) => {
+                        return (a.logicalClock - b.logicalClock) || (new Date(a.createdAt) - new Date(b.createdAt));
+                    });
+                    
+                    renderMessages(relevantMessages);
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        function renderClusterStatus(data) {
+            document.getElementById('networkStatus').textContent = 'Online';
+            document.getElementById('networkStatus').className = 'status-badge status-up';
+            
+            fetch(`${API_BASE}/consensus/status`).then(r=>r.json()).then(consData => {
+                termStat.textContent = consData.currentTerm !== undefined ? consData.currentTerm : '-';
+                leaderStat.textContent = consData.leaderId || '-';
+            }).catch(e=>console.error);
+
+            // Generic parser for Map<String, Object> returned by Spring Boot
+            let nodesArray = [];
+            
+            if(data.nodes && Array.isArray(data.nodes)) {
+                nodesArray = data.nodes;
+            } else {
+                for(const [key, value] of Object.entries(data)) {
+                    if(key !== 'clusterState' && key !== 'globalNodeList' && typeof value === 'object') {
+                        nodesArray.push({
+                            id: key,
+                            status: value.status || 'UNKNOWN',
+                            isLeader: (value.role === 'LEADER' || leaderStat.textContent === key)
+                        });
+                    } else if (typeof value === 'string' && key.startsWith('node')) {
+                        nodesArray.push({
+                            id: key,
+                            status: value,
+                            isLeader: leaderStat.textContent === key
+                        });
+                    }
+                }
+            }
+
+            const currentNodesStr = JSON.stringify(nodesArray);
+            if (currentNodesStr !== lastReportedNodesStr) {
+                nodeList.innerHTML = '';
+                if(nodesArray.length === 0) {
+                    nodeList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No node info available...</div>';
+                } else {
+                    nodesArray.forEach(node => createNodeCard(node.id, node.status, node.isLeader));
+                }
+                lastReportedNodesStr = currentNodesStr;
+            }
+        }
+
+        function createNodeCard(id, status, isLeader) {
+            const s = (status || "").toUpperCase();
+            const isUp = s === 'UP' || s === 'ACTIVE' || s.includes('FOLLOWER') || s.includes('LEADER');
+            const statusClass = isUp ? 'status-up' : 'status-down';
+            
+            const card = document.createElement('div');
+            card.className = 'node-card';
+            card.innerHTML = `
+                <div class="node-header">
+                    <div class="node-id">
+                        ${id} 
+                        ${isLeader ? '<span class="role-badge role-leader">LEADER</span>' : ''}
+                    </div>
+                    <span class="status-badge ${statusClass}">${status}</span>
+                </div>
+                <div class="node-actions">
+                    <button class="btn-sm btn-fail" onclick="failNode('${id}')">Simulate Fail</button>
+                    <button class="btn-sm btn-recover" onclick="recoverNode('${id}')">Recover</button>
+                </div>
+            `;
+            nodeList.appendChild(card);
+        }
+
+        let renderCount = 0;
+        function renderMessages(messages) {
+            if(messages.length === renderCount) return; // avoid re-render if no new
+            renderCount = messages.length;
+            
+            chatBox.innerHTML = '';
+            if(messages.length === 0) {
+                 chatBox.innerHTML = '<div style="text-align: center; color: var(--text-muted); margin-top: auto; margin-bottom: auto;">No messages yet.</div>';
+                 return;
+            }
+            
+            messages.forEach(msg => {
+                const isSentByMe = msg.fromUser === currentUser;
+                const wrap = document.createElement('div');
+                wrap.className = `message ${isSentByMe ? 'msg-sent' : 'msg-received'}`;
+                
+                wrap.innerHTML = `
+                    <div class="msg-bubble">
+                        ${!isSentByMe ? `<div style="font-size: 0.75rem; font-weight:bold; color:var(--accent); margin-bottom:4px;">@${msg.fromUser}</div>` : ''}
+                        <div>${msg.content}</div>
+                    </div>
+                    <div class="msg-meta">
+                        <span>LC: <b class="msg-vector">${msg.logicalClock || 0}</b> | Node: ${msg.sourceNode || 'N/A'}</span>
+                    </div>
+                `;
+                chatBox.appendChild(wrap);
+            });
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        window.failNode = async function(nodeId) {
+            addLog(`Triggering failure on node ${nodeId}...`, "warning");
+            try {
+                await fetch(`${API_BASE}/cluster/fail/${nodeId}`, { method: 'POST' });
+                addLog(`Node ${nodeId} failed.`, "error");
+                fetchClusterStatus();
+            } catch(e) {
+                addLog(`Error failing node: ${e.message}`, "error");
+            }
+        }
+
+        window.recoverNode = async function(nodeId) {
+            addLog(`Recovering node ${nodeId}...`, "info");
+            try {
+                await fetch(`${API_BASE}/cluster/recover/${nodeId}`, { method: 'POST' });
+                addLog(`Node ${nodeId} recovered.`, "success");
+                fetchClusterStatus();
+            } catch(e) {
+                addLog(`Error recovering node: ${e.message}`, "error");
+            }
+        }
+        
+        window.triggerElection = async function() {
+            addLog(`Forcing leader election...`, "consensus");
+            try {
+                await fetch(`${API_BASE}/consensus/elect`, { method: 'POST' });
+                addLog(`Election triggered.`, "success");
+                fetchClusterStatus();
+            } catch(e) {
+                addLog(`Error during election: ${e.message}`, "error");
+            }
+        }
+    </script>
+</body>
+</html>
