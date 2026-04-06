@@ -31,10 +31,10 @@
             font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
             background: var(--bg-base);
             color: var(--text-main);
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
+            overflow: hidden;
             background-image:
                 radial-gradient(circle at 12% 20%, rgba(34, 211, 238, 0.18), transparent 30%),
                 radial-gradient(circle at 85% 18%, rgba(249, 115, 22, 0.14), transparent 28%),
@@ -127,6 +127,27 @@
             box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
         }
 
+        select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        select option {
+            background: #ffffff;
+            color: #111111;
+        }
+
+        select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
         button {
             background: var(--primary);
             color: white;
@@ -152,10 +173,12 @@
         .dashboard {
             display: grid;
             grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(280px, 360px);
+            grid-template-rows: 1fr;
             gap: 1.5rem;
             padding: 1.5rem;
             flex: 1;
-            min-height: calc(100vh - var(--header-height));
+            height: calc(100vh - var(--header-height));
+            overflow: hidden;
         }
 
         .panel-header {
@@ -326,6 +349,7 @@
         }
 
         .message-inputs input { flex: 1; }
+        .message-inputs select { flex: 1; }
         
         .content-input-group {
             display: flex;
@@ -502,7 +526,9 @@
                 
                 <div class="message-form">
                     <div class="message-inputs">
-                        <input type="text" id="recipientInput" placeholder="Recipient..." disabled />
+                        <select id="recipientSelect" disabled>
+                            <option value="">Select recipient...</option>
+                        </select>
                     </div>
                     <div class="content-input-group">
                         <input type="text" id="messageInput" placeholder="Type a message..." disabled autocomplete="off" />
@@ -538,7 +564,7 @@
         const usernameInput = document.getElementById('usernameInput');
         const connectBtn = document.getElementById('connectBtn');
         const currentUserDisplay = document.getElementById('currentUserDisplay');
-        const recipientInput = document.getElementById('recipientInput');
+        const recipientSelect = document.getElementById('recipientSelect');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const chatBox = document.getElementById('chatBox');
@@ -546,6 +572,8 @@
         const termStat = document.getElementById('termStat');
         const leaderStat = document.getElementById('leaderStat');
         const systemLogs = document.getElementById('systemLogs');
+        const knownRecipients = new Set();
+        let lastMessageSignature = '';
 
         function addLog(msg, type = "info") {
             const time = new Date().toLocaleTimeString();
@@ -576,7 +604,7 @@
                 usernameInput.style.display = 'none';
                 connectBtn.style.display = 'none';
                 
-                recipientInput.disabled = false;
+                recipientSelect.disabled = false;
                 messageInput.disabled = false;
                 sendBtn.disabled = false;
                 
@@ -589,7 +617,7 @@
 
         async function sendMessage() {
             if(!currentUser) return;
-            const toUser = recipientInput.value.trim();
+            const toUser = recipientSelect.value.trim();
             const content = messageInput.value.trim();
             
             if(!toUser || !content) return;
@@ -611,6 +639,7 @@
                 });
                 
                 if(res.ok) {
+                    upsertRecipients([toUser]);
                     addLog(`Message sent to ${toUser}.`, "success");
                     fetchMessages();
                 } else {
@@ -656,7 +685,33 @@
                 const allRes = await fetch(`${API_BASE}/messages/all`);
                 if(allRes.ok) {
                     const allMessages = await allRes.json();
-                    const relevantMessages = allMessages.filter(m => m.fromUser === currentUser || m.toUser === currentUser);
+                    const recipients = new Set();
+                    const normalizedCurrent = normalizeUser(currentUser);
+
+                    allMessages.forEach(m => {
+                        if(normalizeUser(m.fromUser) === normalizedCurrent && normalizeUser(m.toUser) !== normalizedCurrent) {
+                            recipients.add((m.toUser || '').trim());
+                        }
+                        if(normalizeUser(m.toUser) === normalizedCurrent && normalizeUser(m.fromUser) !== normalizedCurrent) {
+                            recipients.add((m.fromUser || '').trim());
+                        }
+                    });
+
+                    upsertRecipients(Array.from(recipients));
+
+                    const selectedRecipient = recipientSelect.value;
+                    const normalizedRecipient = normalizeUser(selectedRecipient);
+
+                    const relevantMessages = allMessages.filter(m => {
+                        const from = normalizeUser(m.fromUser);
+                        const to = normalizeUser(m.toUser);
+
+                        if(from !== normalizedCurrent && to !== normalizedCurrent) return false;
+                        if(!normalizedRecipient) return true;
+
+                        return (from === normalizedCurrent && to === normalizedRecipient)
+                            || (from === normalizedRecipient && to === normalizedCurrent);
+                    });
                     
                     relevantMessages.sort((a,b) => {
                         return (a.logicalClock - b.logicalClock) || (new Date(a.createdAt) - new Date(b.createdAt));
@@ -666,6 +721,41 @@
                 }
             } catch(e) {
                 console.error(e);
+            }
+        }
+
+        function normalizeUser(value) {
+            return (value || '').trim().toLowerCase();
+        }
+
+        function upsertRecipients(recipientNames) {
+            let changed = false;
+            recipientNames.forEach(name => {
+                const clean = (name || '').trim();
+                if(!clean || normalizeUser(clean) === normalizeUser(currentUser)) return;
+                if(!knownRecipients.has(clean)) {
+                    knownRecipients.add(clean);
+                    changed = true;
+                }
+            });
+
+            if(!changed) return;
+
+            const currentSelection = recipientSelect.value;
+            const recipients = Array.from(knownRecipients).sort((a,b) => a.localeCompare(b));
+
+            recipientSelect.innerHTML = '<option value="">Select recipient...</option>';
+            recipients.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                recipientSelect.appendChild(option);
+            });
+
+            if(currentSelection && recipients.includes(currentSelection)) {
+                recipientSelect.value = currentSelection;
+            } else if(!recipientSelect.value && recipients.length > 0) {
+                recipientSelect.value = recipients[0];
             }
         }
 
@@ -736,14 +826,15 @@
             nodeList.appendChild(card);
         }
 
-        let renderCount = 0;
         function renderMessages(messages) {
-            if(messages.length === renderCount) return; // avoid re-render if no new
-            renderCount = messages.length;
+              const selectedRecipient = recipientSelect.value || '';
+              const signature = `${selectedRecipient}|${messages.map(m => `${m.id || ''}:${m.logicalClock || 0}`).join('|')}`;
+              if(signature === lastMessageSignature) return;
+              lastMessageSignature = signature;
             
             chatBox.innerHTML = '';
             if(messages.length === 0) {
-                 chatBox.innerHTML = '<div style="text-align: center; color: var(--text-muted); margin-top: auto; margin-bottom: auto;">No messages yet.</div>';
+                  chatBox.innerHTML = '<div style="text-align: center; color: var(--text-muted); margin-top: auto; margin-bottom: auto;">No messages for this recipient yet.</div>';
                  return;
             }
             
@@ -765,6 +856,11 @@
             });
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+
+        recipientSelect.addEventListener('change', () => {
+            lastMessageSignature = '';
+            fetchMessages();
+        });
 
         window.failNode = async function(nodeId) {
             addLog(`Triggering failure on node ${nodeId}...`, "warning");
