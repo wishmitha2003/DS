@@ -349,7 +349,20 @@
         }
 
         .message-inputs input { flex: 1; }
-        .message-inputs select { flex: 1; }
+
+        .recipient-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            width: 100%;
+        }
+
+        .field-caption {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
         
         .content-input-group {
             display: flex;
@@ -526,9 +539,11 @@
                 
                 <div class="message-form">
                     <div class="message-inputs">
-                        <select id="recipientSelect" disabled>
-                            <option value="">Select recipient...</option>
-                        </select>
+                        <div class="recipient-field">
+                            <label class="field-caption" for="recipientInput">Recipients</label>
+                            <input type="text" id="recipientInput" placeholder="Type or select recipient..." disabled list="recipientOptions" autocomplete="off" />
+                            <datalist id="recipientOptions"></datalist>
+                        </div>
                     </div>
                     <div class="content-input-group">
                         <input type="text" id="messageInput" placeholder="Type a message..." disabled autocomplete="off" />
@@ -564,7 +579,8 @@
         const usernameInput = document.getElementById('usernameInput');
         const connectBtn = document.getElementById('connectBtn');
         const currentUserDisplay = document.getElementById('currentUserDisplay');
-        const recipientSelect = document.getElementById('recipientSelect');
+        const recipientInput = document.getElementById('recipientInput');
+        const recipientOptions = document.getElementById('recipientOptions');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const chatBox = document.getElementById('chatBox');
@@ -604,7 +620,7 @@
                 usernameInput.style.display = 'none';
                 connectBtn.style.display = 'none';
                 
-                recipientSelect.disabled = false;
+                recipientInput.disabled = false;
                 messageInput.disabled = false;
                 sendBtn.disabled = false;
                 
@@ -617,7 +633,7 @@
 
         async function sendMessage() {
             if(!currentUser) return;
-            const toUser = recipientSelect.value.trim();
+            const toUser = recipientInput.value.trim();
             const content = messageInput.value.trim();
             
             if(!toUser || !content) return;
@@ -699,7 +715,7 @@
 
                     upsertRecipients(Array.from(recipients));
 
-                    const selectedRecipient = recipientSelect.value;
+                    const selectedRecipient = recipientInput.value;
                     const normalizedRecipient = normalizeUser(selectedRecipient);
 
                     const relevantMessages = allMessages.filter(m => {
@@ -729,34 +745,23 @@
         }
 
         function upsertRecipients(recipientNames) {
-            let changed = false;
             recipientNames.forEach(name => {
                 const clean = (name || '').trim();
                 if(!clean || normalizeUser(clean) === normalizeUser(currentUser)) return;
-                if(!knownRecipients.has(clean)) {
+
+                const exists = Array.from(knownRecipients).some(existing => normalizeUser(existing) === normalizeUser(clean));
+                if(!exists) {
                     knownRecipients.add(clean);
-                    changed = true;
                 }
             });
 
-            if(!changed) return;
-
-            const currentSelection = recipientSelect.value;
             const recipients = Array.from(knownRecipients).sort((a,b) => a.localeCompare(b));
-
-            recipientSelect.innerHTML = '<option value="">Select recipient...</option>';
+            recipientOptions.innerHTML = '';
             recipients.forEach(name => {
                 const option = document.createElement('option');
                 option.value = name;
-                option.textContent = name;
-                recipientSelect.appendChild(option);
+                recipientOptions.appendChild(option);
             });
-
-            if(currentSelection && recipients.includes(currentSelection)) {
-                recipientSelect.value = currentSelection;
-            } else if(!recipientSelect.value && recipients.length > 0) {
-                recipientSelect.value = recipients[0];
-            }
         }
 
         function renderClusterStatus(data) {
@@ -827,7 +832,7 @@
         }
 
         function renderMessages(messages) {
-              const selectedRecipient = recipientSelect.value || '';
+            const selectedRecipient = recipientInput.value || '';
               const signature = `${selectedRecipient}|${messages.map(m => `${m.id || ''}:${m.logicalClock || 0}`).join('|')}`;
               if(signature === lastMessageSignature) return;
               lastMessageSignature = signature;
@@ -857,7 +862,12 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        recipientSelect.addEventListener('change', () => {
+        recipientInput.addEventListener('change', () => {
+            lastMessageSignature = '';
+            fetchMessages();
+        });
+
+        recipientInput.addEventListener('input', () => {
             lastMessageSignature = '';
             fetchMessages();
         });
