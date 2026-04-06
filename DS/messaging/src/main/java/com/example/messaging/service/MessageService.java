@@ -4,7 +4,6 @@ import com.example.messaging.dto.SendMessageRequest;
 import com.example.messaging.model.Message;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -17,13 +16,19 @@ public class MessageService {
     private final NodeClusterService nodeClusterService;
     private final DeduplicationService deduplicationService;
     private final ReplicationService replicationService;
+    private final LogicalClockService logicalClockService;
+    private final TimeSyncService timeSyncService;
 
     public MessageService(NodeClusterService nodeClusterService,
                           DeduplicationService deduplicationService,
-                          ReplicationService replicationService) {
+                          ReplicationService replicationService,
+                          LogicalClockService logicalClockService,
+                          TimeSyncService timeSyncService) {
         this.nodeClusterService = nodeClusterService;
         this.deduplicationService = deduplicationService;
         this.replicationService = replicationService;
+        this.logicalClockService = logicalClockService;
+        this.timeSyncService = timeSyncService;
     }
 
     public Message sendMessage(SendMessageRequest request) {
@@ -33,6 +38,7 @@ public class MessageService {
         }
 
         String writableNode = nodeClusterService.getWritableNode();
+        long clock = logicalClockService.tick();
 
         Message message = new Message(
                 UUID.randomUUID().toString(),
@@ -40,8 +46,8 @@ public class MessageService {
                 request.getFromUser(),
                 request.getToUser(),
                 request.getContent(),
-                Instant.now(),
-                0L,
+                timeSyncService.correctedNow(writableNode),
+                clock,
                 writableNode
         );
 
@@ -60,7 +66,8 @@ public class MessageService {
 
         return nodeClusterService.readNodeMessages(primary).stream()
                 .filter(m -> userId.equalsIgnoreCase(m.getToUser()))
-                .sorted(Comparator.comparing(Message::getCreatedAt))
+                .sorted(Comparator.comparingLong(Message::getLogicalClock)
+                        .thenComparing(Message::getCreatedAt))
                 .collect(Collectors.toList());
     }
 
@@ -71,7 +78,8 @@ public class MessageService {
         }
 
         return nodeClusterService.readNodeMessages(primary).stream()
-                .sorted(Comparator.comparing(Message::getCreatedAt))
+                .sorted(Comparator.comparingLong(Message::getLogicalClock)
+                        .thenComparing(Message::getCreatedAt))
                 .collect(Collectors.toList());
     }
 
